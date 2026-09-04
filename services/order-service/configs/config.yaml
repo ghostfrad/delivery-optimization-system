@@ -1,0 +1,19 @@
+server:
+  port: ":8080"
+  read_timeout: 10s
+  write_timeout: 10s
+
+database:
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "postgres"
+  dbname: "delivery_db"
+  sslmode: "disable"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  group_id: "order-service-group"
+  topics:
+    order_created: "order-created"

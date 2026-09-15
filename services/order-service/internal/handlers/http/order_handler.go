@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"order-service/internal/domain"
+	"order-service/internal/handlers/http/dto"
 	"order-service/internal/service"
 )
 
@@ -17,26 +17,20 @@ func NewOrderHandler(service *service.OrderService) *OrderHandler {
 	return &OrderHandler{service: service}
 }
 
-type CreateOrderResponse struct {
-	ID      string `json:"id"`
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-// CreateOrder - создание заказа
 func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req domain.CreateOrderRequest
+	// 1. Декодируем в DTO
+	var req dto.CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Валидация
+	// 2. Валидация (вручную или через validator)
 	if req.CustomerID == "" {
 		http.Error(w, "customer_id is required", http.StatusBadRequest)
 		return
@@ -46,24 +40,28 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order, err := h.service.CreateOrder(r.Context(), req)
+	// 3. DTO -> Domain (параметры) и вызов сервиса
+	order, err := h.service.CreateOrder(
+		r.Context(),
+		req.CustomerID,
+		req.Address,
+		req.Lat,
+		req.Lng,
+		req.Description,
+	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	resp := CreateOrderResponse{
-		ID:      order.ID,
-		Status:  string(order.Status),
-		Message: "Заказ принят",
-	}
+	// 4. Domain -> DTO
+	resp := toDTOCreateOrder(order)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
 }
 
-// GetOrder - получение заказа
 func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -82,6 +80,9 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Domain -> DTO
+	resp := toDTOOrder(order)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(order)
+	json.NewEncoder(w).Encode(resp)
 }

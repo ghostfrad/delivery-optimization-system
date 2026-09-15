@@ -12,17 +12,16 @@ import (
 func TestOrderService_CreateOrder_Success(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	service := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer)
 
-	req := domain.CreateOrderRequest{
-		CustomerID:  "user123",
-		Address:     "ул. Пушкина, д. 10",
-		Lat:         55.7558,
-		Lng:         37.6173,
-		Description: "Тестовый заказ",
-	}
-
-	order, err := service.CreateOrder(context.Background(), req)
+	order, err := svc.CreateOrder(
+		context.Background(),
+		"user123",
+		"ул. Пушкина, д. 10",
+		55.7558,
+		37.6173,
+		"Тестовый заказ",
+	)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
@@ -30,13 +29,20 @@ func TestOrderService_CreateOrder_Success(t *testing.T) {
 	if order == nil {
 		t.Fatal("Expected order, got nil")
 	}
-	if order.CustomerID != req.CustomerID {
-		t.Errorf("Expected CustomerID %s, got %s", req.CustomerID, order.CustomerID)
+	if order.CustomerID != "user123" {
+		t.Errorf("Expected CustomerID user123, got %s", order.CustomerID)
+	}
+	if order.Address != "ул. Пушкина, д. 10" {
+		t.Errorf("Expected Address ул. Пушкина, д. 10, got %s", order.Address)
 	}
 	if order.Status != domain.StatusInPool {
 		t.Errorf("Expected status %s, got %s", domain.StatusInPool, order.Status)
 	}
+	if order.Description != "Тестовый заказ" {
+		t.Errorf("Expected Description 'Тестовый заказ', got %s", order.Description)
+	}
 
+	// Проверяем, что заказ сохранён в мок-репозитории
 	savedOrder, err := mockRepo.GetByID(context.Background(), order.ID)
 	if err != nil {
 		t.Fatalf("Expected to find order, got error: %v", err)
@@ -45,6 +51,7 @@ func TestOrderService_CreateOrder_Success(t *testing.T) {
 		t.Errorf("Expected order ID %s, got %s", order.ID, savedOrder.ID)
 	}
 
+	// Проверяем, что событие опубликовано
 	if len(mockProducer.PublishedMessages) != 1 {
 		t.Fatalf("Expected 1 message published, got %d", len(mockProducer.PublishedMessages))
 	}
@@ -62,14 +69,14 @@ func TestOrderService_CreateOrder_RepositoryError(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockRepo.Err = context.DeadlineExceeded
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	service := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer)
 
-	req := domain.CreateOrderRequest{
-		CustomerID: "user123",
-		Address:    "ул. Пушкина, д. 10",
-	}
-
-	order, err := service.CreateOrder(context.Background(), req)
+	order, err := svc.CreateOrder(
+		context.Background(),
+		"user123",
+		"ул. Пушкина, д. 10",
+		0, 0, "",
+	)
 
 	if err == nil {
 		t.Error("Expected error, got nil")
@@ -82,7 +89,7 @@ func TestOrderService_CreateOrder_RepositoryError(t *testing.T) {
 func TestOrderService_GetOrder_Success(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	service := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer)
 
 	testOrder := &domain.Order{
 		ID:         "test123",
@@ -91,7 +98,7 @@ func TestOrderService_GetOrder_Success(t *testing.T) {
 	}
 	mockRepo.Orders[testOrder.ID] = testOrder
 
-	order, err := service.GetOrder(context.Background(), "test123")
+	order, err := svc.GetOrder(context.Background(), "test123")
 
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
@@ -104,9 +111,9 @@ func TestOrderService_GetOrder_Success(t *testing.T) {
 func TestOrderService_GetOrder_NotFound(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	service := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer)
 
-	order, err := service.GetOrder(context.Background(), "nonexistent")
+	order, err := svc.GetOrder(context.Background(), "nonexistent")
 
 	if err == nil {
 		t.Error("Expected error, got nil")
@@ -116,23 +123,36 @@ func TestOrderService_GetOrder_NotFound(t *testing.T) {
 	}
 }
 
+// Тест на ошибку Kafka.
+// ВАЖНО: поведение зависит от того, как реализован CreateOrder.
+// Если ошибка Kafka возвращается — ожидаем err != nil.
+// Если игнорируется — ожидаем err == nil и order != nil.
 func TestOrderService_CreateOrder_KafkaError(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
 	mockProducer.Err = context.DeadlineExceeded
-	service := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer)
 
-	req := domain.CreateOrderRequest{
-		CustomerID: "user123",
-		Address:    "ул. Пушкина, д. 10",
+	order, err := svc.CreateOrder(
+		context.Background(),
+		"user123",
+		"ул. Пушкина, д. 10",
+		0, 0, "",
+	)
+
+	// Вариант 1: ошибка Kafka возвращается
+	if err == nil {
+		t.Error("Expected error from Kafka publish, got nil")
+	}
+	if order != nil {
+		t.Error("Expected nil order when Kafka fails, got order")
 	}
 
-	order, err := service.CreateOrder(context.Background(), req)
-
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if order == nil {
-		t.Fatal("Expected order, got nil")
-	}
+	// Вариант 2: ошибка Kafka игнорируется (раскомментируйте, если выберете этот путь)
+	// if err != nil {
+	//     t.Fatalf("Expected no error, got: %v", err)
+	// }
+	// if order == nil {
+	//     t.Fatal("Expected order, got nil")
+	// }
 }

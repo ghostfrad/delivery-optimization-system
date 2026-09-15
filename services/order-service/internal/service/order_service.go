@@ -23,17 +23,22 @@ func NewOrderService(repo repository.OrderRepository, producer kafka.MessageProd
 	}
 }
 
-// создание заказа
-func (s *OrderService) CreateOrder(ctx context.Context, req domain.CreateOrderRequest) (*domain.Order, error) {
+// internal/service/order_service.go
+func (s *OrderService) CreateOrder(
+	ctx context.Context,
+	customerID, address string,
+	lat, lng float64,
+	description string,
+) (*domain.Order, error) {
 	// 1. Создаем объект заказа
 	order := &domain.Order{
 		ID:          generateID(),
-		CustomerID:  req.CustomerID,
-		Address:     req.Address,
-		Lat:         req.Lat,
-		Lng:         req.Lng,
-		Status:      domain.StatusPending,
-		Description: req.Description,
+		CustomerID:  customerID,
+		Address:     address,
+		Lat:         lat,
+		Lng:         lng,
+		Status:      domain.StatusInPool,
+		Description: description,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -65,7 +70,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req domain.CreateOrderRe
 	}
 
 	if err := s.producer.Publish(ctx, "order-created", order.ID, eventData); err != nil {
-		return order, nil
+		return nil, fmt.Errorf("failed to publish event: %w", err)
 	}
 
 	return order, nil

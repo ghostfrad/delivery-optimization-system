@@ -2,11 +2,9 @@ package mock
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"order-service/internal/domain"
-	"order-service/internal/repository"
 )
 
 // мок реализация для тестов
@@ -15,9 +13,6 @@ type MockOrderRepository struct {
 	Orders map[string]*domain.Order
 	Err    error
 }
-
-// гарантируем, что реализует интерфейс
-var _ repository.OrderRepository = (*MockOrderRepository)(nil)
 
 func NewMockOrderRepository() *MockOrderRepository {
 	return &MockOrderRepository{
@@ -43,7 +38,7 @@ func (m *MockOrderRepository) GetByID(ctx context.Context, id string) (*domain.O
 	defer m.mu.RUnlock()
 	order, ok := m.Orders[id]
 	if !ok {
-		return nil, errors.New("order not found")
+		return nil, domain.ErrOrderNotFound
 	}
 	return order, nil
 }
@@ -56,7 +51,7 @@ func (m *MockOrderRepository) UpdateStatus(ctx context.Context, id string, statu
 	defer m.mu.Unlock()
 	order, ok := m.Orders[id]
 	if !ok {
-		return errors.New("order not found")
+		return domain.ErrOrderNotFound
 	}
 	order.Status = status
 	return nil

@@ -2,18 +2,29 @@ server:
   port: ":8080"
   read_timeout: 10s
   write_timeout: 10s
+  shutdown_timeout: 15s
 
 database:
   host: "localhost"
   port: "5432"
   user: "postgres"
-  password: "postgres"
+  password: ""           # задается в config.local.yaml
   dbname: "delivery_db"
   sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
 
 kafka:
   brokers:
     - "localhost:9092"
-  group_id: "order-service-group"
-  topics:
-    order_created: "order-created"
+  topic_order_created: "order-created"
+  write_timeout: 10s
+  required_acks: "all"
+
+log:
+  level: "info"
+  format: "json"
+
+use_mocks: true
+

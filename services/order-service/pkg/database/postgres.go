@@ -5,22 +5,27 @@ import (
 	"fmt"
 
 	"order-service/internal/config"
+
 	_ "github.com/lib/pq"
 )
 
+// NewPostgres открывает соединение с PostgreSQL и настраивает пул.
+// Возвращает готовый *sql.DB или ошибку, если подключиться не удалось.
 func NewPostgres(cfg config.DatabaseConfig) (*sql.DB, error) {
-	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
-
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("postgres", cfg.DSN())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sql.Open: %w", err)
 	}
 
+	// Настройка пула соединений — важно для production.
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+
+	// Ping проверяет, что соединение реально работает.
 	if err := db.Ping(); err != nil {
-		return nil, err
+		_ = db.Close()
+		return nil, fmt.Errorf("db.Ping: %w", err)
 	}
 
 	return db, nil

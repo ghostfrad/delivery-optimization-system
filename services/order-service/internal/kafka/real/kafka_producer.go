@@ -2,28 +2,51 @@ package real
 
 import (
 	"context"
+	"fmt"
+	"time"
 
-	"order-service/internal/kafka"
+	"github.com/segmentio/kafka-go"
 )
 
-// TODO: Реализовать реальный Kafka продюсер
-
+// KafkaProducer — реализация kafka.MessageProducer поверх segmentio/kafka-go.
 type KafkaProducer struct {
-	brokers []string
+	writer *kafka.Writer
 }
 
-func NewKafkaProducer(brokers []string) *KafkaProducer {
-	return &KafkaProducer{brokers: brokers}
+// NewKafkaProducer создаёт продюсер.
+func NewKafkaProducer(brokers []string, writeTimeout time.Duration) *KafkaProducer {
+	return &KafkaProducer{
+		writer: &kafka.Writer{
+			Addr:                   kafka.TCP(brokers...),
+			Balancer:               &kafka.LeastBytes{},
+			RequiredAcks:           kafka.RequireAll,
+			WriteTimeout:           writeTimeout,
+			Async:                  false,
+			BatchTimeout:           10 * time.Millisecond,
+			AllowAutoTopicCreation: true,
+		},
+	}
 }
 
-var _ kafka.MessageProducer = (*KafkaProducer)(nil)
+// Publish отправляет сообщение в Kafka.
+func (k *KafkaProducer) Publish(ctx context.Context, topic, key string, value []byte) error {
+	msg := kafka.Message{
+		Topic: topic,
+		Key:   []byte(key),
+		Value: value,
+		Time:  time.Now(),
+	}
 
-func (k *KafkaProducer) Publish(ctx context.Context, topic string, key string, value []byte) error {
-	// TODO: Реализовать
+	if err := k.writer.WriteMessages(ctx, msg); err != nil {
+		return fmt.Errorf("kafka publish to %s: %w", topic, err)
+	}
 	return nil
 }
 
+// Close закрывает writer и сбрасывает буфер.
 func (k *KafkaProducer) Close() error {
-	// TODO: Реализовать
+	if err := k.writer.Close(); err != nil {
+		return fmt.Errorf("kafka writer close: %w", err)
+	}
 	return nil
 }

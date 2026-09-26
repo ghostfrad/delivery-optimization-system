@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"order-service/internal/domain"
@@ -12,7 +13,7 @@ import (
 func TestOrderService_CreateOrder_Success(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	svc := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer, "order-created")
 
 	order, err := svc.CreateOrder(
 		context.Background(),
@@ -69,7 +70,7 @@ func TestOrderService_CreateOrder_RepositoryError(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockRepo.Err = context.DeadlineExceeded
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	svc := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer, "order-created")
 
 	order, err := svc.CreateOrder(
 		context.Background(),
@@ -89,7 +90,7 @@ func TestOrderService_CreateOrder_RepositoryError(t *testing.T) {
 func TestOrderService_GetOrder_Success(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	svc := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer, "order-created")
 
 	testOrder := &domain.Order{
 		ID:         "test123",
@@ -111,12 +112,15 @@ func TestOrderService_GetOrder_Success(t *testing.T) {
 func TestOrderService_GetOrder_NotFound(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
-	svc := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer, "order-created")
 
 	order, err := svc.GetOrder(context.Background(), "nonexistent")
 
 	if err == nil {
 		t.Error("Expected error, got nil")
+	}
+	if !errors.Is(err, domain.ErrOrderNotFound) {
+		t.Errorf("Expected ErrOrderNotFound, got: %v", err)
 	}
 	if order != nil {
 		t.Error("Expected nil order, got order")
@@ -131,7 +135,7 @@ func TestOrderService_CreateOrder_KafkaError(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
 	mockProducer.Err = context.DeadlineExceeded
-	svc := NewOrderService(mockRepo, mockProducer)
+	svc := NewOrderService(mockRepo, mockProducer, "order-created")
 
 	order, err := svc.CreateOrder(
 		context.Background(),

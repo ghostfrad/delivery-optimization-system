@@ -2,63 +2,170 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	orderHandler "order-service/internal/handlers/http"
+	"order-service/internal/config"
+	orderHTTP "order-service/internal/handlers/http"
 	kafkaMock "order-service/internal/kafka/mock"
+	kafkaReal "order-service/internal/kafka/real"
 	repoMock "order-service/internal/repository/mock"
+	repoPostgres "order-service/internal/repository/postgres"
 	"order-service/internal/service"
+	"order-service/pkg/database"
 )
 
 func main() {
-	log.Println("Order Service starting...")
+	if err := run(); err != nil {
+		slog.Error("service failed", "error", err)
+		os.Exit(1)
+	}
+}
 
-	// моки для тестирования
-	mockRepo := repoMock.NewMockOrderRepository()
-	mockProducer := kafkaMock.NewMockMessageProducer()
-
-	orderService := service.NewOrderService(mockRepo, mockProducer)
-	orderHandler := orderHandler.NewOrderHandler(orderService)
-
-	// Настройка роутов
-	http.HandleFunc("/orders", orderHandler.CreateOrder)
-	http.HandleFunc("/orders/", orderHandler.GetOrder)
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","mode":"mock"}`))
-	})
-
-	// Запуск сервера
-	srv := &http.Server{
-		Addr:         ":8080",
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+func run() error {
+	// 1. Конфиг (YAML + config.local.yaml, валидация).
+	cfg, err := config.Load()
+	if err != nil {
+		return err
 	}
 
-	go func() {
-		log.Println("Server running on http://localhost:8080")
-		log.Println("Using MOCKS for repository and Kafka")
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+	// 2. Логгер (JSON или text в зависимости от cfg.Log.Format).
+	logger := newLogger(cfg.Log)
+	slog.SetDefault(logger)
+
+	logger.Info("starting order-service",
+		"port", cfg.Server.Port,
+		"use_mocks", cfg.UseMocks,
+		"log_level", cfg.Log.Level,
+		"log_format", cfg.Log.Format,
+	)
+
+	// 3. Зависимости: repo и producer.
+	var (
+		repo     service.OrderRepository
+		producer service.MessageProducer
+		cleanup  []func() error
+	)
+
+	if cfg.UseMocks {
+		logger.Warn("using MOCKS for repository and Kafka")
+		repo = repoMock.NewMockOrderRepository()
+		producer = kafkaMock.NewMockMessageProducer()
+	} else {
+		// Postgres
+		db, err := database.NewPostgres(cfg.Database)
+		if err != nil {
+			return err
+		}
+		cleanup = append(cleanup, db.Close)
+		repo = repoPostgres.NewOrderRepository(db)
+		logger.Info("connected to postgres",
+			"host", cfg.Database.Host,
+			"dbname", cfg.Database.DBName,
+		)
+
+		// Kafka
+		kafkaProducer := kafkaReal.NewKafkaProducer(cfg.Kafka.Brokers, cfg.Kafka.WriteTimeout)
+		cleanup = append(cleanup, kafkaProducer.Close)
+		producer = kafkaProducer
+		logger.Info("connected to kafka",
+			"brokers", cfg.Kafka.Brokers,
+			"topic", cfg.Kafka.TopicOrderCreated,
+		)
+	}
+
+	// 4. Очистка при выходе (в обратном порядке).
+	defer func() {
+		for i := len(cleanup) - 1; i >= 0; i-- {
+			if err := cleanup[i](); err != nil {
+				logger.Error("cleanup error", "error", err)
+			}
 		}
 	}()
 
-	// Graceful shutdown
+	// 5. Сервис и хендлер.
+	orderService := service.NewOrderService(repo, producer, cfg.Kafka.TopicOrderCreated)
+	handler := orderHTTP.NewOrderHandler(orderService, logger)
+
+	// 6. HTTP-роутер.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/orders", handler.CreateOrder)
+	mux.HandleFunc("/orders/", handler.GetOrder)
+	mux.HandleFunc("/health", healthHandler)
+
+	srv := &http.Server{
+		Addr:         cfg.Server.Port,
+		Handler:      mux,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+	}
+
+	// 7. Запуск сервера в горутине.
+	serverErr := make(chan error, 1)
+	go func() {
+		logger.Info("http server listening", "addr", cfg.Server.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	// 8. Ждём сигнал или ошибку сервера.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	select {
+	case err := <-serverErr:
+		return err
+	case sig := <-quit:
+		logger.Info("shutdown signal received", "signal", sig.String())
+	}
+
+	// 9. Graceful shutdown.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("http server shutdown error", "error", err)
+		return err
 	}
-	log.Println("Server stopped")
+
+	logger.Info("server stopped gracefully")
+	return nil
+}
+
+// newLogger создаёт slog.Logger в зависимости от конфига.
+func newLogger(cfg config.LogConfig) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.Level)}
+
+	var handler slog.Handler
+	if cfg.Format == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+	return slog.New(handler)
+}
+
+func parseLogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+// healthHandler — простой health-check. Позже можно добавить проверку БД и Kafka.
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }

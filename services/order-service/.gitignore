@@ -1,17 +1,21 @@
-# Binaries
+# Локальные конфиги с секретами
+configs/config.local.yaml
+*.local.yaml
+.env
+.env.local
+
+# Go
 bin/
 *.exe
 *.test
-
-# Go
+*.out
 coverage.out
+coverage.html
 
 # IDE
 .idea/
 .vscode/
-
-# Environment
-.env
+*.swp
 
 # OS
 .DS_Store

@@ -2,8 +2,6 @@ package mock
 
 import (
 	"context"
-
-	"order-service/internal/kafka"
 )
 
 // MockMessageProducer - мок реализация для тестов
@@ -17,8 +15,6 @@ type Message struct {
 	Key   string
 	Value []byte
 }
-
-var _ kafka.MessageProducer = (*MockMessageProducer)(nil)
 
 func NewMockMessageProducer() *MockMessageProducer {
 	return &MockMessageProducer{

@@ -21,6 +21,15 @@ cd delivery-optimization-system/services/order-service
 make deps
 
 # Запустить сервис (с моками)
+В файле config.yaml выставить параметр use_mocks: true
+
+make run
+
+# Запустить сервис с реальным postgres и kafka
+В файле конфига выставить параметр use_mocks: false 
+
+Поднять контейнеры используя файл docker-compose
+
 make run
 
 # Запустить тесты

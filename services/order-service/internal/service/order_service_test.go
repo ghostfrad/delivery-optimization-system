@@ -127,10 +127,6 @@ func TestOrderService_GetOrder_NotFound(t *testing.T) {
 	}
 }
 
-// Тест на ошибку Kafka.
-// ВАЖНО: поведение зависит от того, как реализован CreateOrder.
-// Если ошибка Kafka возвращается — ожидаем err != nil.
-// Если игнорируется — ожидаем err == nil и order != nil.
 func TestOrderService_CreateOrder_KafkaError(t *testing.T) {
 	mockRepo := repoMock.NewMockOrderRepository()
 	mockProducer := kafkaMock.NewMockMessageProducer()
@@ -144,19 +140,10 @@ func TestOrderService_CreateOrder_KafkaError(t *testing.T) {
 		0, 0, "",
 	)
 
-	// Вариант 1: ошибка Kafka возвращается
 	if err == nil {
 		t.Error("Expected error from Kafka publish, got nil")
 	}
 	if order != nil {
 		t.Error("Expected nil order when Kafka fails, got order")
 	}
-
-	// Вариант 2: ошибка Kafka игнорируется (раскомментируйте, если выберете этот путь)
-	// if err != nil {
-	//     t.Fatalf("Expected no error, got: %v", err)
-	// }
-	// if order == nil {
-	//     t.Fatal("Expected order, got nil")
-	// }
 }

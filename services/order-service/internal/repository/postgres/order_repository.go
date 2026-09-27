@@ -9,17 +9,17 @@ import (
 	"order-service/internal/domain"
 )
 
-// OrderRepository — реализация repository.OrderRepository поверх PostgreSQL.
+// реализация repository.OrderRepository поверх PostgreSQL.
 type OrderRepository struct {
 	db *sql.DB
 }
 
-// NewOrderRepository создаёт репозиторий.
+// создаёт репозиторий.
 func NewOrderRepository(db *sql.DB) *OrderRepository {
 	return &OrderRepository{db: db}
 }
 
-// Create сохраняет заказ в БД.
+// сохраняет заказ в БД.
 func (r *OrderRepository) Create(ctx context.Context, order *domain.Order) error {
 	const query = `
 		INSERT INTO orders (
@@ -46,7 +46,7 @@ func (r *OrderRepository) Create(ctx context.Context, order *domain.Order) error
 	return nil
 }
 
-// GetByID возвращает заказ по ID или ErrOrderNotFound.
+// возвращает заказ по ID или ErrOrderNotFound.
 func (r *OrderRepository) GetByID(ctx context.Context, id string) (*domain.Order, error) {
 	const query = `
 		SELECT id, customer_id, address, lat, lng,
@@ -76,7 +76,7 @@ func (r *OrderRepository) GetByID(ctx context.Context, id string) (*domain.Order
 	return &o, nil
 }
 
-// UpdateStatus меняет статус заказа.
+// меняет статус заказа.
 func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status domain.OrderStatus) error {
 	const query = `
 		UPDATE orders
@@ -99,7 +99,7 @@ func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status do
 	return nil
 }
 
-// FindByStatus возвращает все заказы с указанным статусом.
+// возвращает все заказы с указанным статусом.
 func (r *OrderRepository) FindByStatus(ctx context.Context, status domain.OrderStatus) ([]*domain.Order, error) {
 	const query = `
 		SELECT id, customer_id, address, lat, lng,
@@ -115,7 +115,6 @@ func (r *OrderRepository) FindByStatus(ctx context.Context, status domain.OrderS
 	}
 	defer rows.Close()
 
-	// Возвращаем пустой слайс, а не nil — удобнее для потребителей.
 	result := make([]*domain.Order, 0)
 	for rows.Next() {
 		var o domain.Order
@@ -134,14 +133,14 @@ func (r *OrderRepository) FindByStatus(ctx context.Context, status domain.OrderS
 		}
 		result = append(result, &o)
 	}
-	// Проверяем ошибки, которые могли случиться во время итерации.
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("postgres iterate rows: %w", err)
 	}
 	return result, nil
 }
 
-// Delete удаляет заказ по ID.
+// удаляет заказ по ID.
 func (r *OrderRepository) Delete(ctx context.Context, id string) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM orders WHERE id = $1`, id)
 	if err != nil {

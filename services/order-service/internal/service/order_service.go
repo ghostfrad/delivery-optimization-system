@@ -31,7 +31,7 @@ type OrderService struct {
 	topicOrderCreated string
 }
 
-// NewOrderService создаёт сервис.
+// создаёт сервис.
 // topicOrderCreated — имя топика Kafka для события order-created.
 func NewOrderService(
 	repo OrderRepository,
@@ -45,7 +45,7 @@ func NewOrderService(
 	}
 }
 
-// CreateOrder создаёт заказ и публикует событие order-created в Kafka.
+// создаёт заказ и публикует событие order-created в Kafka.
 func (s *OrderService) CreateOrder(
 	ctx context.Context,
 	customerID, address string,
@@ -89,12 +89,12 @@ func (s *OrderService) CreateOrder(
 	return order, nil
 }
 
-// GetOrder возвращает заказ по ID.
+// возвращает заказ по ID.
 func (s *OrderService) GetOrder(ctx context.Context, id string) (*domain.Order, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
-// generateID генерирует уникальный ID заказа.
+// генерирует уникальный ID заказа.
 func generateID() string {
 	return fmt.Sprintf("ORD_%s_%d",
 		time.Now().Format("20060102150405"),

@@ -33,7 +33,7 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Декодируем DTO
+	// декодируем DTO
 	var req dto.CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
@@ -43,7 +43,7 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Валидация (пока вручную)
+	// валидация (пока вручную)
 	if req.CustomerID == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Error: "customer_id is required",
@@ -59,7 +59,7 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Вызов сервиса
+	// вызов сервиса
 	order, err := h.service.CreateOrder(
 		r.Context(),
 		req.CustomerID,
@@ -73,7 +73,7 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Domain -> DTO
+	// Domain -> DTO
 	resp := toDTOCreateOrder(order)
 	writeJSON(w, http.StatusCreated, resp)
 }

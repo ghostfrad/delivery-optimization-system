@@ -61,21 +61,11 @@ type LogConfig struct {
 	Format string `yaml:"format"`
 }
 
-// Load читает конфиг из двух файлов:
-//  1. базовый (configs/config.yaml) — дефолты, лежит в Git;
-//  2. локальный (configs/config.local.yaml) — переопределение, в .gitignore.
-//
-// Пути можно переопределить через CONFIG_PATH / CONFIG_LOCAL_PATH.
 func Load() (*Config, error) {
 	cfg := &Config{}
 
 	basePath := getEnvOrDefault("CONFIG_PATH", "configs/config.yaml")
 	if err := loadYAML(basePath, cfg, true); err != nil {
-		return nil, err
-	}
-
-	localPath := getEnvOrDefault("CONFIG_LOCAL_PATH", "configs/config.local.yaml")
-	if err := loadYAML(localPath, cfg, false); err != nil {
 		return nil, err
 	}
 

@@ -8,7 +8,7 @@ database:
   host: "localhost"
   port: "5432"
   user: "postgres"
-  password: ""           # задается в config.local.yaml
+  password: "postgres"           # для теста пароль пока открытый
   dbname: "delivery_db"
   sslmode: "disable"
   max_open_conns: 25

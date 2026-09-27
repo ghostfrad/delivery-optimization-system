@@ -27,13 +27,13 @@ func main() {
 }
 
 func run() error {
-	// 1. Конфиг (YAML + config.local.yaml, валидация).
+	// конфиг
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	// 2. Логгер (JSON или text в зависимости от cfg.Log.Format).
+	// логгер
 	logger := newLogger(cfg.Log)
 	slog.SetDefault(logger)
 
@@ -44,7 +44,6 @@ func run() error {
 		"log_format", cfg.Log.Format,
 	)
 
-	// 3. Зависимости: repo и producer.
 	var (
 		repo     service.OrderRepository
 		producer service.MessageProducer
@@ -78,7 +77,7 @@ func run() error {
 		)
 	}
 
-	// 4. Очистка при выходе (в обратном порядке).
+	// очистка при выходе
 	defer func() {
 		for i := len(cleanup) - 1; i >= 0; i-- {
 			if err := cleanup[i](); err != nil {
@@ -87,11 +86,11 @@ func run() error {
 		}
 	}()
 
-	// 5. Сервис и хендлер.
+	// сервис и хендлер
 	orderService := service.NewOrderService(repo, producer, cfg.Kafka.TopicOrderCreated)
 	handler := orderHTTP.NewOrderHandler(orderService, logger)
 
-	// 6. HTTP-роутер.
+	// HTTP-роутер
 	mux := http.NewServeMux()
 	mux.HandleFunc("/orders", handler.CreateOrder)
 	mux.HandleFunc("/orders/", handler.GetOrder)
@@ -104,7 +103,7 @@ func run() error {
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
-	// 7. Запуск сервера в горутине.
+	// запуск сервера
 	serverErr := make(chan error, 1)
 	go func() {
 		logger.Info("http server listening", "addr", cfg.Server.Port)
@@ -113,7 +112,7 @@ func run() error {
 		}
 	}()
 
-	// 8. Ждём сигнал или ошибку сервера.
+	// ждём сигнал или ошибку сервера.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -124,7 +123,7 @@ func run() error {
 		logger.Info("shutdown signal received", "signal", sig.String())
 	}
 
-	// 9. Graceful shutdown.
+	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
@@ -137,7 +136,7 @@ func run() error {
 	return nil
 }
 
-// newLogger создаёт slog.Logger в зависимости от конфига.
+// создаёт slog.Logger в зависимости от конфига
 func newLogger(cfg config.LogConfig) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.Level)}
 
@@ -163,7 +162,7 @@ func parseLogLevel(level string) slog.Level {
 	}
 }
 
-// healthHandler — простой health-check. Позже можно добавить проверку БД и Kafka.
+// простой health-check. Позже нужно добавить проверку БД и Kafka
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
